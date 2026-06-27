@@ -180,4 +180,8 @@ static int pq_priority(const Order *o) {
 - PHP 7.4+ for live mode (optional)
 - Any modern browser for the dashboard
 
+- ------------------------Live dashboard of restuarant-simulator---------------------
+- <img width="954" height="441" alt="image" src="https://github.com/user-attachments/assets/8110a979-8173-48c7-95a6-26a7b4be62be" />
+
+
 ---
