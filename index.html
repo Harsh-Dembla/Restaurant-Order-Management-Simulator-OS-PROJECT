@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Restaurant Order Management Simulator</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ─── Reset & Tokens ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg0: #0a0c0f;
+  --bg1: #12151a;
+  --bg2: #1a1e26;
+  --bg3: #222733;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.13);
+  --text1: #e8eaf0;
+  --text2: #8b90a0;
+  --text3: #555a6a;
+  --accent: #ff6b35;
+  --accent2: #ff8c5a;
+  --vip: #f0b429;
+  --vip2: #f7c948;
+  --green: #2dd4a0;
+  --red: #f05a5a;
+  --blue: #4d9de0;
+  --purple: #9b72cf;
+  --mono: 'Space Mono', monospace;
+  --sans: 'DM Sans', sans-serif;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+}
+
+body {
+  background: var(--bg0);
+  color: var(--text1);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ─── Noise texture overlay ─── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ─── Layout ─── */
+.app { display: grid; grid-template-rows: auto 1fr; min-height: 100vh; }
+
+/* ─── Header ─── */
+header {
+  display: flex; align-items: center; gap: 20px;
+  padding: 0 28px;
+  height: 62px;
+  background: var(--bg1);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+.logo-icon {
+  width: 32px; height: 32px;
+  background: var(--accent);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+}
+.header-divider { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+.header-title { font-size: 12px; color: var(--text3); font-family: var(--mono); }
+
+.header-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.sim-badge {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.06em;
+  background: rgba(45,212,160,0.1);
+  color: var(--green);
+  border: 1px solid rgba(45,212,160,0.2);
+}
+.sim-badge.offline { background: rgba(240,90,90,0.1); color: var(--red); border-color: rgba(240,90,90,0.2); }
+.pulse {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--green);
+  animation: pulse-anim 1.5s ease-in-out infinite;
+}
+.sim-badge.offline .pulse { background: var(--red); animation: none; }
+@keyframes pulse-anim {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+/* ─── Speed control ─── */
+.speed-ctl {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 11px; color: var(--text3);
+}
+.speed-ctl select {
+  background: var(--bg2); border: 1px solid var(--border2); color: var(--text1);
+  border-radius: var(--r-sm); padding: 4px 8px; font-family: var(--mono); font-size: 11px;
+  cursor: pointer;
+}
+
+/* ─── Main grid ─── */
+main {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 0;
+  height: calc(100vh - 62px);
+  overflow: hidden;
+}
+
+/* ─── Stat bar ─── */
+.stat-bar {
+  grid-column: 1 / -1;
+  display: flex; gap: 1px;
+  background: var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.stat {
+  flex: 1;
+  padding: 14px 20px;
+  background: var(--bg1);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.stat-label { font-size: 10px; font-family: var(--mono); letter-spacing: 0.08em; color: var(--text3); text-transform: uppercase; }
+.stat-value { font-size: 26px; font-weight: 600; font-family: var(--mono); color: var(--text1); }
+.stat-value.accent { color: var(--accent); }
+.stat-value.green  { color: var(--green); }
+.stat-value.vip    { color: var(--vip); }
+.stat-value.blue   { color: var(--blue); }
+
+/* ─── Sidebar (Chefs + Log) ─── */
+.sidebar {
+  background: var(--bg1);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.sidebar-section { display: flex; flex-direction: column; }
+.sidebar-section.log { flex: 1; overflow: hidden; }
+.sidebar-hdr {
+  padding: 12px 18px 10px;
+  font-size: 10px; font-family: var(--mono); letter-spacing: 0.08em;
+  color: var(--text3); text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.sidebar-hdr-count {
+  margin-left: auto;
+  background: var(--bg3); border-radius: 10px;
+  padding: 1px 7px; font-size: 10px; color: var(--text2);
+}
+
+/* ─── Chef cards ─── */
+.chef-list { padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.chef-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  background: var(--bg2);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  transition: all 0.3s;
+}
+.chef-card.active {
+  border-color: rgba(255,107,53,0.25);
+  background: rgba(255,107,53,0.05);
+}
+.chef-card.idle { opacity: 0.5; }
+.chef-avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--bg3);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+}
+.chef-card.active .chef-avatar { background: rgba(255,107,53,0.2); }
+.chef-info { flex: 1; min-width: 0; }
+.chef-name { font-size: 12px; font-weight: 500; color: var(--text1); }
+.chef-status { font-size: 11px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chef-card.active .chef-status { color: var(--accent2); }
+.chef-count { font-size: 11px; font-family: var(--mono); color: var(--text3); flex-shrink: 0; }
+
+/* ─── Log ─── */
+.log-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  scrollbar-width: thin; scrollbar-color: var(--bg3) transparent;
+}
+.log-entry {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  padding: 3px 6px;
+  border-radius: 4px;
+  line-height: 1.6;
+  transition: background 0.2s;
+}
+.log-entry:hover { background: var(--bg2); color: var(--text2); }
+.log-entry.log-vip   { color: var(--vip); }
+.log-entry.log-done  { color: var(--green); }
+.log-entry.log-chef  { color: var(--blue); }
+.log-entry.log-cancel{ color: var(--red); }
+
+/* ─── Board columns ─── */
+.board {
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.board-inner {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border);
+  overflow: hidden;
+}
+.column {
+  background: var(--bg0);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.col-header {
+  padding: 14px 16px 12px;
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg1);
+  position: sticky; top: 0;
+}
+.col-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.col-dot.received  { background: var(--blue); }
+.col-dot.queue     { background: var(--vip); }
+.col-dot.preparing { background: var(--accent); animation: pulse-anim 1.5s infinite; }
+.col-dot.done      { background: var(--green); }
+.col-title { font-size: 11px; font-family: var(--mono); letter-spacing: 0.06em; color: var(--text2); text-transform: uppercase; }
+.col-count {
+  margin-left: auto;
+  background: var(--bg3); border-radius: 10px;
+  padding: 2px 8px; font-family: var(--mono); font-size: 10px; color: var(--text2);
+}
+.col-scroll { flex: 1; overflow-y: auto; padding: 10px 8px; scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
+
+/* ─── Order cards ─── */
+.order-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 11px 13px;
+  margin-bottom: 6px;
+  transition: all 0.3s;
+  cursor: default;
+}
+.order-card:hover { border-color: var(--border2); background: var(--bg3); }
+.order-card.vip { border-color: rgba(240,180,41,0.3); }
+.order-card.preparing-card {
+  border-color: rgba(255,107,53,0.3);
+  animation: card-glow 2s ease-in-out infinite;
+}
+@keyframes card-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,107,53,0); }
+  50%       { box-shadow: 0 0 12px 2px rgba(255,107,53,0.1); }
+}
+.order-card.done-card { opacity: 0.7; }
+.order-card.cancelled-card { opacity: 0.4; }
+
+.order-top {
+  display: flex; align-items: flex-start; gap: 6px;
+  margin-bottom: 7px;
+}
+.order-id {
+  font-family: var(--mono); font-size: 10px;
+  color: var(--text3);
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+.order-item {
+  font-size: 12px; font-weight: 500; color: var(--text1);
+  flex: 1; line-height: 1.4;
+}
+.vip-badge {
+  font-size: 9px; font-family: var(--mono); font-weight: 700;
+  background: rgba(240,180,41,0.15);
+  color: var(--vip);
+  border: 1px solid rgba(240,180,41,0.3);
+  border-radius: 4px;
+  padding: 1px 6px;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+.order-meta {
+  display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap;
+}
+.meta-pill {
+  font-size: 10px; font-family: var(--mono);
+  background: var(--bg1); border-radius: 4px;
+  padding: 2px 6px; color: var(--text3);
+}
+.meta-pill.chef   { color: var(--accent); background: rgba(255,107,53,0.08); }
+.meta-pill.time   { color: var(--blue); }
+
+.order-actions { margin-top: 8px; }
+.cancel-btn {
+  font-size: 10px; font-family: var(--mono);
+  background: transparent;
+  border: 1px solid rgba(240,90,90,0.3);
+  color: var(--red);
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.cancel-btn:hover { background: rgba(240,90,90,0.1); }
+.cancel-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* ─── Progress bar (preparing) ─── */
+.prep-bar {
+  height: 3px;
+  background: var(--bg1);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.prep-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--vip));
+  border-radius: 2px;
+  transition: width 0.5s;
+}
+
+/* ─── Empty state ─── */
+.empty {
+  padding: 30px 16px;
+  text-align: center;
+  font-size: 11px; font-family: var(--mono);
+  color: var(--text3);
+}
+
+/* ─── Demo mode banner ─── */
+.demo-banner {
+  background: rgba(77,157,224,0.1);
+  border-bottom: 1px solid rgba(77,157,224,0.2);
+  padding: 8px 20px;
+  font-size: 11px; font-family: var(--mono);
+  color: var(--blue);
+  text-align: center;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.demo-banner.hidden { display: none; }
+
+/* ─── Scrollbar style ─── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ─── HEADER ─── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🍽</div>
+    RESTOSIM
+  </div>
+  <div class="header-divider"></div>
+  <div class="header-title">ORDER_MANAGEMENT_SIMULATOR / OS_CONCEPTS_DEMO</div>
+  <div class="header-right">
+    <div class="speed-ctl">
+      <span>SPEED</span>
+      <select id="speedSelect" onchange="setSpeed(this.value)">
+        <option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option>
+        <option value="2">2x</option>
+        <option value="3">3x</option>
+        <option value="5">5x</option>
+      </select>
+    </div>
+    <div class="sim-badge" id="statusBadge">
+      <div class="pulse"></div>
+      <span id="statusText">CONNECTING</span>
+    </div>
+  </div>
+</header>
+
+<!-- ─── DEMO BANNER ─── -->
+<div class="demo-banner" id="demoBanner">
+  ⚡ DEMO MODE — Running with simulated data. To use live C backend: compile restaurant_sim.c and start a PHP server in the same directory.
+</div>
+
+<!-- ─── MAIN ─── -->
+<main>
+
+  <!-- Stat bar -->
+  <div class="stat-bar">
+    <div class="stat">
+      <div class="stat-label">Total Orders</div>
+      <div class="stat-value accent" id="statTotal">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">In Queue</div>
+      <div class="stat-value blue"  id="statQueue">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Preparing</div>
+      <div class="stat-value accent" id="statPreparing">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Completed</div>
+      <div class="stat-value green" id="statDone">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">VIP Orders</div>
+      <div class="stat-value vip"  id="statVip">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Active Chefs</div>
+      <div class="stat-value" id="statChefs">0</div>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+
+    <!-- Chefs section -->
+    <div class="sidebar-section">
+      <div class="sidebar-hdr">
+        👨‍🍳 Kitchen Staff
+        <span class="sidebar-hdr-count" id="chefCount">0</span>
+      </div>
+      <div class="chef-list" id="chefList"></div>
+    </div>
+
+    <!-- Log section -->
+    <div class="sidebar-section log">
+      <div class="sidebar-hdr">📋 Activity Log</div>
+      <div class="log-scroll" id="logScroll"></div>
+    </div>
+
+  </div>
+
+  <!-- Order board -->
+  <div class="board">
+    <div class="board-inner">
+      <!-- Received -->
+      <div class="column">
+        <div class="col-header">
+          <div class="col-dot received"></div>
+          <div class="col-title">Received</div>
+          <div class="col-count" id="cnt0">0</div>
+        </div>
+        <div class="col-scroll" id="col0"></div>
+      </div>
+      <!-- In Queue -->
+      <div class="column">
+        <div class="col-header">
+          <div class="col-dot queue"></div>
+          <div class="col-title">In Queue</div>
+          <div class="col-count" id="cnt1">0</div>
+        </div>
+        <div class="col-scroll" id="col1"></div>
+      </div>
+      <!-- Preparing -->
+      <div class="column">
+        <div class="col-header">
+          <div class="col-dot preparing"></div>
+          <div class="col-title">Preparing</div>
+          <div class="col-count" id="cnt2">0</div>
+        </div>
+        <div class="col-scroll" id="col2"></div>
+      </div>
+      <!-- Completed -->
+      <div class="column">
+        <div class="col-header">
+          <div class="col-dot done"></div>
+          <div class="col-title">Completed</div>
+          <div class="col-count" id="cnt3">0</div>
+        </div>
+        <div class="col-scroll" id="col3"></div>
+      </div>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   Demo simulation engine — mirrors the C backend logic in JavaScript.
+   When the PHP API is available, this is replaced by real data.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const MENU = [
+  { item: "Margherita Pizza",      time: 12 },
+  { item: "Grilled Salmon",        time: 15 },
+  { item: "Caesar Salad",          time: 5  },
+  { item: "Beef Burger",           time: 8  },
+  { item: "Pasta Carbonara",       time: 10 },
+  { item: "Chicken Tikka",         time: 14 },
+  { item: "Sushi Platter",         time: 18 },
+  { item: "Lamb Chops",            time: 20 },
+  { item: "Vegetable Stir-fry",    time: 7  },
+  { item: "Chocolate Lava Cake",   time: 9  }
+];
+
+const CHEF_NAMES = ["Marco","Yuki","Sofia","Amir","Léa","Carlos","Priya","Ben"];
+
+/* ─── Simulation state ─── */
+let simSpeed = 1.0;
+let demoMode = true;   /* flipped to false if PHP API responds */
+let lastTimestamp = 0;
+
+let state = {
+  orders: [],
+  chefs: [],
+  log: [],
+  active_chefs: 3,
+  queue_size: 0,
+  sim_speed: 1.0,
+};
+
+let nextId = 1;
+let simOrders = [];
+let simChefs = Array.from({length: 8}, (_, i) => ({
+  id: i + 1,
+  active: i < 3,
+  orders_done: 0,
+  current_order_id: -1,
+  current_item: ""
+}));
+let simLog = [];
+let simQueueSize = 0;
+
+function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function randMenu() { return MENU[rand(0, MENU.length - 1)]; }
+function now() { return Math.floor(Date.now() / 1000); }
+
+function addLog(msg, type = '') {
+  const d = new Date();
+  const ts = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+  simLog.unshift({ text: `[${ts}] ${msg}`, type });
+  if (simLog.length > 80) simLog.pop();
+}
+
+/* ─── Demo tick ─── */
+let tickInterval = null;
+
+function runDemoTick() {
+  const speed = simSpeed;
+
+  /* Waiter: add order ~every 2.5s real time at 1x */
+  if (Math.random() < 0.3 * speed && simOrders.length < 80) {
+    const menu = randMenu();
+    const vip  = Math.random() < 0.2;
+    const o = {
+      id: nextId++,
+      item: menu.item,
+      priority: vip ? 1 : 0,
+      state: 1, /* in_queue */
+      chef_id: -1,
+      created_at: now(),
+      completed_at: 0,
+      prep_time: menu.time,
+      cancelled: 0,
+      _progress: 0,
+    };
+    simOrders.push(o);
+    addLog(`Waiter added Order #${o.id} "${o.item}" (${vip ? 'VIP' : 'Normal'})`, vip ? 'log-vip' : '');
+  }
+
+  /* Dynamic chef allocation */
+  const inQueue = simOrders.filter(o => o.state === 1).length;
+  const activeCount = simChefs.filter(c => c.active).length;
+  if (inQueue > 8 && activeCount < 8) {
+    const idleChef = simChefs.find(c => !c.active);
+    if (idleChef) {
+      idleChef.active = true;
+      addLog(`Allocator: activated Chef ${idleChef.id} (queue=${inQueue})`, 'log-chef');
+    }
+  } else if (inQueue < 3 && activeCount > 2) {
+    const busyChef = simChefs.slice().reverse().find(c => c.active && c.current_order_id === -1);
+    if (busyChef) {
+      busyChef.active = false;
+      addLog(`Allocator: deactivated Chef ${busyChef.id} (queue=${inQueue})`, 'log-chef');
+    }
+  }
+
+  /* Chefs: pick up orders */
+  simChefs.forEach(chef => {
+    if (!chef.active) return;
+    if (chef.current_order_id !== -1) return;
+    /* Find highest priority queued order */
+    const waiting = simOrders.filter(o => o.state === 1 && !o.cancelled).sort((a,b) => b.priority - a.priority);
+    if (waiting.length === 0) return;
+    const o = waiting[0];
+    o.state = 2; /* preparing */
+    o.chef_id = chef.id;
+    o._progress = 0;
+    o._startedAt = now();
+    chef.current_order_id = o.id;
+    chef.current_item = o.item;
+    addLog(`Chef ${chef.id} starts "${o.item}" (Order #${o.id}${o.priority ? ', VIP' : ''})`, 'log-chef');
+  });
+
+  /* Chefs: advance preparation */
+  simChefs.forEach(chef => {
+    if (chef.current_order_id === -1) return;
+    const o = simOrders.find(o => o.id === chef.current_order_id);
+    if (!o) { chef.current_order_id = -1; chef.current_item = ''; return; }
+    if (o.cancelled) {
+      chef.current_order_id = -1;
+      chef.current_item = '';
+      return;
+    }
+    const elapsed = now() - (o._startedAt || now());
+    const prepSec = o.prep_time / speed;
+    o._progress = Math.min(100, Math.round(elapsed / prepSec * 100));
+    if (o._progress >= 100) {
+      o.state = 3; /* completed */
+      o.completed_at = now();
+      chef.orders_done++;
+      chef.current_order_id = -1;
+      chef.current_item = '';
+      addLog(`Chef ${chef.id} completed "${o.item}" (Order #${o.id})`, 'log-done');
+    }
+  });
+
+  /* Build state snapshot */
+  state = {
+    timestamp: now(),
+    sim_speed: simSpeed,
+    active_chefs: simChefs.filter(c => c.active).length,
+    queue_size: simOrders.filter(o => o.state === 1).length,
+    orders: simOrders.slice(-60).map(o => ({ ...o })),
+    chefs: simChefs.map(c => ({
+      id: c.id,
+      active: c.active ? 1 : 0,
+      orders_done: c.orders_done,
+      current_order_id: c.current_order_id,
+      current_item: c.current_item
+    })),
+    log: simLog.map(l => l.text)
+  };
+
+  render(state);
+}
+
+/* ─── Cancellation ─── */
+function cancelOrder(id) {
+  if (!demoMode) {
+    fetch('api.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'cancel', id })
+    });
+  } else {
+    const o = simOrders.find(o => o.id === id);
+    if (o && o.state !== 3 && !o.cancelled) {
+      o.cancelled = 1;
+      o.state = 4;
+      addLog(`Order #${id} "${o.item}" CANCELLED`, 'log-cancel');
+      /* Free chef if they were on it */
+      const chef = simChefs.find(c => c.current_order_id === id);
+      if (chef) { chef.current_order_id = -1; chef.current_item = ''; }
+    }
+  }
+}
+
+function setSpeed(val) {
+  simSpeed = parseFloat(val);
+  if (!demoMode) {
+    fetch('api.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'speed', speed: simSpeed })
+    });
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   RENDER ENGINE
+   ══════════════════════════════════════════════════════════════════════════ */
+function fmtAge(ts) {
+  if (!ts) return '';
+  const age = now() - ts;
+  if (age < 60) return `${age}s ago`;
+  return `${Math.floor(age/60)}m ago`;
+}
+
+function renderChefs(chefs, activeCount) {
+  const el = document.getElementById('chefList');
+  const countEl = document.getElementById('chefCount');
+  countEl.textContent = activeCount;
+  el.innerHTML = chefs.map(c => {
+    const active = c.active || (c.id && c.id <= activeCount);
+    const busy   = c.current_order_id !== -1 && c.current_item;
+    return `<div class="chef-card ${active ? (busy ? 'active' : '') : 'idle'}">
+      <div class="chef-avatar">${active ? (busy ? '👨‍🍳' : '🧑‍🍳') : '💤'}</div>
+      <div class="chef-info">
+        <div class="chef-name">Chef ${CHEF_NAMES[c.id-1] || c.id}</div>
+        <div class="chef-status">${busy ? c.current_item : (active ? 'Waiting…' : 'Off duty')}</div>
+      </div>
+      <div class="chef-count">${c.orders_done}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderLog(log) {
+  const el = document.getElementById('logScroll');
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+  el.innerHTML = log.map(line => {
+    let cls = '';
+    if (line.includes('VIP') || line.includes('vip'))     cls = 'log-vip';
+    if (line.includes('completed') || line.includes('done')) cls = 'log-done';
+    if (line.includes('Chef') || line.includes('Allocator')) cls = 'log-chef';
+    if (line.includes('CANCELLED') || line.includes('cancel')) cls = 'log-cancel';
+    return `<div class="log-entry ${cls}">${escHtml(line)}</div>`;
+  }).join('');
+  if (atBottom) el.scrollTop = el.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderBoard(orders, activeCount) {
+  const buckets = { 0: [], 1: [], 2: [], 3: [], 4: [] };
+  orders.forEach(o => buckets[o.state]?.push(o));
+
+  /* Received = no longer used in C output but handle for completeness */
+  const received = buckets[0];
+  const queued   = buckets[1].sort((a,b) => b.priority - a.priority);
+  const prep     = buckets[2];
+  const done     = buckets[3].slice(-20).reverse();
+  const cols     = [received, queued, prep, done];
+
+  document.getElementById('cnt0').textContent = received.length;
+  document.getElementById('cnt1').textContent = queued.length;
+  document.getElementById('cnt2').textContent = prep.length;
+  document.getElementById('cnt3').textContent = done.length;
+
+  /* Stats */
+  const total = orders.length;
+  document.getElementById('statTotal').textContent    = total;
+  document.getElementById('statQueue').textContent    = queued.length;
+  document.getElementById('statPreparing').textContent = prep.length;
+  document.getElementById('statDone').textContent     = done.length;
+  document.getElementById('statVip').textContent      = orders.filter(o => o.priority).length;
+  document.getElementById('statChefs').textContent    = activeCount;
+
+  const cards = [
+    o => `<div class="order-card${o.priority?' vip':''}">
+      <div class="order-top">
+        <div class="order-id">#${o.id}</div>
+        <div class="order-item">${escHtml(o.item)}</div>
+        ${o.priority ? '<div class="vip-badge">VIP</div>' : ''}
+      </div>
+      <div class="order-meta">
+        <span class="meta-pill time">${o.prep_time}min</span>
+        <span class="meta-pill">${fmtAge(o.created_at)}</span>
+      </div>
+      <div class="order-actions">
+        <button class="cancel-btn" onclick="cancelOrder(${o.id})">Cancel</button>
+      </div>
+    </div>`,
+    /* In queue */
+    o => `<div class="order-card${o.priority?' vip':''}">
+      <div class="order-top">
+        <div class="order-id">#${o.id}</div>
+        <div class="order-item">${escHtml(o.item)}</div>
+        ${o.priority ? '<div class="vip-badge">VIP</div>' : ''}
+      </div>
+      <div class="order-meta">
+        <span class="meta-pill time">${o.prep_time}min prep</span>
+        <span class="meta-pill">${fmtAge(o.created_at)}</span>
+      </div>
+      <div class="order-actions">
+        <button class="cancel-btn" onclick="cancelOrder(${o.id})">Cancel</button>
+      </div>
+    </div>`,
+    /* Preparing */
+    o => {
+      const prog = o._progress || 0;
+      return `<div class="order-card preparing-card${o.priority?' vip':''}">
+        <div class="order-top">
+          <div class="order-id">#${o.id}</div>
+          <div class="order-item">${escHtml(o.item)}</div>
+          ${o.priority ? '<div class="vip-badge">VIP</div>' : ''}
+        </div>
+        <div class="order-meta">
+          ${o.chef_id !== -1 ? `<span class="meta-pill chef">Chef ${CHEF_NAMES[o.chef_id-1]||o.chef_id}</span>` : ''}
+          <span class="meta-pill time">${prog}%</span>
+        </div>
+        <div class="prep-bar"><div class="prep-fill" style="width:${prog}%"></div></div>
+      </div>`;
+    },
+    /* Completed */
+    o => `<div class="order-card done-card${o.priority?' vip':''}">
+      <div class="order-top">
+        <div class="order-id">#${o.id}</div>
+        <div class="order-item">${escHtml(o.item)}</div>
+        ${o.priority ? '<div class="vip-badge">VIP</div>' : ''}
+      </div>
+      <div class="order-meta">
+        ${o.chef_id !== -1 ? `<span class="meta-pill chef">Chef ${CHEF_NAMES[o.chef_id-1]||o.chef_id}</span>` : ''}
+        <span class="meta-pill time">Done ${fmtAge(o.completed_at)}</span>
+      </div>
+    </div>`,
+  ];
+
+  for (let i = 0; i < 4; i++) {
+    const el = document.getElementById(`col${i}`);
+    if (cols[i].length === 0) {
+      el.innerHTML = `<div class="empty">—</div>`;
+    } else {
+      el.innerHTML = cols[i].map(cards[i]).join('');
+    }
+  }
+}
+
+function render(state) {
+  renderChefs(state.chefs || [], state.active_chefs || 0);
+  renderLog(state.log || []);
+  renderBoard(state.orders || [], state.active_chefs || 0);
+}
+
+/* ─── Try live API first, fallback to demo ─── */
+async function fetchLiveState() {
+  try {
+    const resp = await fetch('api.php?action=status', { signal: AbortSignal.timeout(1500) });
+    const json = await resp.json();
+    if (!json.ok || !json.state) throw new Error('bad response');
+    if (json.state.timestamp === lastTimestamp) return; /* no change */
+    lastTimestamp = json.state.timestamp;
+
+    /* Calculate progress for preparing orders */
+    json.state.orders.forEach(o => {
+      if (o.state === 2) {
+        const elapsed = now() - o.created_at;
+        o._progress = Math.min(100, Math.round(elapsed / o.prep_time * 100));
+      }
+    });
+
+    state = json.state;
+    render(state);
+
+    if (demoMode) {
+      demoMode = false;
+      clearInterval(tickInterval);
+      document.getElementById('demoBanner').classList.add('hidden');
+    }
+  } catch {
+    if (!demoMode) {
+      demoMode = true;
+      document.getElementById('demoBanner').classList.remove('hidden');
+      tickInterval = setInterval(runDemoTick, 800);
+    }
+  }
+}
+
+/* ─── Status badge ─── */
+function updateBadge() {
+  const badge = document.getElementById('statusBadge');
+  const txt   = document.getElementById('statusText');
+  if (demoMode) {
+    badge.classList.add('offline');
+    txt.textContent = 'DEMO';
+  } else {
+    badge.classList.remove('offline');
+    txt.textContent = 'LIVE';
+  }
+}
+
+/* ─── Boot ─── */
+(async function boot() {
+  /* Try live once */
+  await fetchLiveState();
+
+  if (demoMode) {
+    /* Start demo engine */
+    tickInterval = setInterval(runDemoTick, 800);
+    /* Still poll API periodically to reconnect */
+    setInterval(fetchLiveState, 3000);
+  } else {
+    setInterval(fetchLiveState, 600);
+  }
+  setInterval(updateBadge, 1000);
+  updateBadge();
+})();
+</script>
+</body>
+</html>
